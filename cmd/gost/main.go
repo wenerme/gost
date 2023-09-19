@@ -1,10 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/go-gost/x/registry"
 	"log"
+	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"os/exec"
@@ -90,8 +94,41 @@ func init() {
 }
 
 func main() {
+	if ctlrAddr != "" {
+		ctlrAddr = strings.TrimSuffix(ctlrAddr, "/")
+		registry.AutherRegistry().Register("controller/auther", &auth{})
+	}
+
 	p := &program{}
+
 	if err := svc.Run(p); err != nil {
 		log.Fatal(err)
 	}
+}
+
+var ctlrAddr = os.Getenv("GOST_CONTROLLER_ADDR")
+
+type auth struct {
+}
+
+func (a *auth) Authenticate(ctx context.Context, user, password string) bool {
+	res, err := http.Post(ctlrAddr+"/auth", "application/json", bytes.NewReader(MustMarshal(map[string]string{
+		"username": user,
+		"password": password,
+	})))
+	if err != nil {
+		return false
+	}
+	if res.StatusCode >= 200 && res.StatusCode < 300 {
+		return true
+	}
+	return false
+}
+
+func MustMarshal(v interface{}) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return b
 }
